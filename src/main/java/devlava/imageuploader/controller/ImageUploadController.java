@@ -12,11 +12,31 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 @RestController
 @RequestMapping("/api/images")
-@CrossOrigin(origins = "http://localhost:3000")  // React 주소 명시
+@CrossOrigin(origins = "http://localhost:3000") // React 주소 명시
 public class ImageUploadController {
+
+    private final Function<String, String> generateUniqueName = originalFilename -> {
+        String extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        return UUID.randomUUID() + extension;
+    };
+
+    private final Function<HttpServletRequest, String> createServerUrl = request -> request.getScheme() + "://"
+            + request.getServerName() + ":" + request.getServerPort();
+
+    private final Function<String, Path> createUploadPath = uploadDir -> {
+        Path path = Paths.get(uploadDir);
+        try {
+            Files.createDirectories(path);
+        } catch (Exception e) {
+            throw new RuntimeException("디렉토리 생성 실패", e);
+        }
+        return path;
+    };
 
     @PostMapping
     public ResponseEntity<Map<String, String>> uploadImage(
@@ -28,24 +48,17 @@ public class ImageUploadController {
                 throw new IllegalArgumentException("이미지 파일이 비어 있습니다.");
             }
 
-            String originalFilename = image.getOriginalFilename();
-            String extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            String uniqueName = UUID.randomUUID() + extension;
-
             String uploadDir = "/Users/lavaspoon/Desktop/ImageUploader/file";
-            Path uploadPath = Paths.get(uploadDir);
-            Files.createDirectories(uploadPath);
-
+            String uniqueName = generateUniqueName.apply(image.getOriginalFilename());
+            Path uploadPath = createUploadPath.apply(uploadDir);
             Path savePath = uploadPath.resolve(uniqueName);
+
             image.transferTo(savePath.toFile());
 
-            // ✅ 절대 URL 생성
-            String serverUrl = request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort();
+            String serverUrl = createServerUrl.apply(request);
             String imageUrl = serverUrl + "/static/images/" + uniqueName;
 
-            Map<String, String> result = new HashMap<>();
-            result.put("url", imageUrl);
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(Map.of("url", imageUrl));
 
         } catch (Exception e) {
             e.printStackTrace();
